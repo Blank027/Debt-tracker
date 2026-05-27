@@ -1,3 +1,5 @@
+import { useState, useEffect } from "react";
+
 const MONTHS = [
   "Jun 2026","Jul 2026","Aug 2026","Sep 2026","Oct 2026",
   "Nov 2026","Dec 2026","Jan 2027","Feb 2027","Mar 2027",
@@ -165,7 +167,6 @@ export default function App() {
   return (
     <div style={{ minHeight:"100vh", background:"#0d0d0d", fontFamily:"'DM Mono','Courier New',monospace", color:"#e8e0d0", padding:"28px 18px" }}>
       <style>{`
-        
         * { box-sizing:border-box; }
         .tag { display:inline-block; font-size:10px; letter-spacing:0.15em; text-transform:uppercase; padding:2px 8px; border-radius:2px; }
         .urgent { background:#ff4444; color:#fff; }
