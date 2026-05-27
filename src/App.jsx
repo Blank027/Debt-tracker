@@ -1,4 +1,3 @@
-cat > /mnt/user-data/outputs/App.jsx << 'ENDOFFILE'
 import { useState, useEffect } from "react";
 
 const MONTHS = [
@@ -168,7 +167,7 @@ export default function App() {
   return (
     <div style={{ minHeight:"100vh", background:"#0d0d0d", fontFamily:"'DM Mono','Courier New',monospace", color:"#e8e0d0", padding:"28px 18px" }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@700;800&display=swap');
+        
         * { box-sizing:border-box; }
         .tag { display:inline-block; font-size:10px; letter-spacing:0.15em; text-transform:uppercase; padding:2px 8px; border-radius:2px; }
         .urgent { background:#ff4444; color:#fff; }
@@ -481,4 +480,3 @@ export default function App() {
     </div>
   );
 }
-ENDOFFILE
