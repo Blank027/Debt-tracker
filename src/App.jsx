@@ -1,4 +1,3 @@
-import { useState, useEffect } from "react";
 
 const MONTHS = [
   "Jun 2026","Jul 2026","Aug 2026","Sep 2026","Oct 2026",
