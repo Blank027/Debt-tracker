@@ -1,4 +1,5 @@
-import { useState } from "react";
+cat > /mnt/user-data/outputs/App.jsx << 'ENDOFFILE'
+import { useState, useEffect } from "react";
 
 const MONTHS = [
   "Jun 2026","Jul 2026","Aug 2026","Sep 2026","Oct 2026",
@@ -8,16 +9,21 @@ const MONTHS = [
   "Apr 2028","May 2028","Jun 2028","Jul 2028","Aug 2028","Sep 2028"
 ];
 
+const CC_MONTHS = [
+  "Jun 2026","Jul 2026","Aug 2026","Sep 2026","Oct 2026",
+  "Nov 2026","Dec 2026","Jan 2027","Feb 2027"
+];
+
 const initialPlan = [
-  { month: "Jun 2026", card1Pay: 404, card2Pay: 520, card1Bal: 3232, card2Bal: 2080 },
-  { month: "Jul 2026", card1Pay: 404, card2Pay: 520, card1Bal: 2828, card2Bal: 1560 },
-  { month: "Aug 2026", card1Pay: 404, card2Pay: 520, card1Bal: 2424, card2Bal: 1040 },
-  { month: "Sep 2026", card1Pay: 404, card2Pay: 520, card1Bal: 2020, card2Bal: 520 },
-  { month: "Oct 2026", card1Pay: 404, card2Pay: 520, card1Bal: 1616, card2Bal: 0 },
-  { month: "Nov 2026", card1Pay: 924, card2Pay: 0,   card1Bal: 692,  card2Bal: 0 },
-  { month: "Dec 2026", card1Pay: 692, card2Pay: 0,   card1Bal: 0,    card2Bal: 0 },
-  { month: "Jan 2027", card1Pay: 0,   card2Pay: 0,   card1Bal: 0,    card2Bal: 0 },
-  { month: "Feb 2027", card1Pay: 0,   card2Pay: 0,   card1Bal: 0,    card2Bal: 0 },
+  { month: "Jun 2026",  card1Pay: 404, card2Pay: 520, card1Bal: 3232, card2Bal: 2080 },
+  { month: "Jul 2026",  card1Pay: 404, card2Pay: 520, card1Bal: 2828, card2Bal: 1560 },
+  { month: "Aug 2026",  card1Pay: 404, card2Pay: 520, card1Bal: 2424, card2Bal: 1040 },
+  { month: "Sep 2026",  card1Pay: 404, card2Pay: 520, card1Bal: 2020, card2Bal: 520  },
+  { month: "Oct 2026",  card1Pay: 404, card2Pay: 520, card1Bal: 1616, card2Bal: 0    },
+  { month: "Nov 2026",  card1Pay: 924, card2Pay: 0,   card1Bal: 692,  card2Bal: 0    },
+  { month: "Dec 2026",  card1Pay: 692, card2Pay: 0,   card1Bal: 0,    card2Bal: 0    },
+  { month: "Jan 2027",  card1Pay: 0,   card2Pay: 0,   card1Bal: 0,    card2Bal: 0    },
+  { month: "Feb 2027",  card1Pay: 0,   card2Pay: 0,   card1Bal: 0,    card2Bal: 0    },
 ];
 
 const ONE_TIME_CARDS = [
@@ -49,10 +55,6 @@ function buildCarPlan() {
 
 const CAR_PLAN = buildCarPlan();
 const CAR_PAYOFF_MONTH = CAR_PLAN[CAR_PLAN.length - 1].month;
-const CC_MONTHS = [
-  "Jun 2026","Jul 2026","Aug 2026","Sep 2026","Oct 2026",
-  "Nov 2026","Dec 2026","Jan 2027","Feb 2027"
-];
 
 function recompute(paid1, paid2) {
   let b1 = 3636, b2 = 2600;
@@ -67,16 +69,64 @@ function recompute(paid1, paid2) {
   return rows;
 }
 
-const TABS = ["Overview", "High-APR Payoff", "0% Cards", "Car Loan"];
+// Smart allocator — urgency priority
+function allocateExtra(amount, otPaid, card2Bal, card1Bal, carBal) {
+  let remaining = amount;
+  const allocs = [];
+
+  const otRemaining = ONE_TIME_CARDS.filter(c => !otPaid[c.id]);
+  for (const c of otRemaining) {
+    if (remaining <= 0) break;
+    const give = Math.min(remaining, c.balance);
+    allocs.push({ label: c.label, amount: give, reason: "28% APR — highest priority" });
+    remaining -= give;
+  }
+
+  if (remaining > 0 && card2Bal > 0) {
+    const give = Math.min(remaining, card2Bal);
+    allocs.push({ label: "Card 2 (0%)", amount: give, reason: "Expires Nov 2026 — most urgent deadline" });
+    remaining -= give;
+  }
+
+  if (remaining > 0 && card1Bal > 0) {
+    const give = Math.min(remaining, card1Bal);
+    allocs.push({ label: "Card 1 (0%)", amount: give, reason: "Expires Feb 2027" });
+    remaining -= give;
+  }
+
+  if (remaining > 0 && carBal > 0) {
+    const give = Math.min(remaining, carBal);
+    allocs.push({ label: "Car Loan", amount: give, reason: "7.59% APR — attack mode" });
+    remaining -= give;
+  }
+
+  return allocs;
+}
+
+const TABS = ["Overview", "High-APR Payoff", "0% Cards", "Car Loan", "Extra Cash"];
+
+function load(key, fallback) {
+  try { const v = localStorage.getItem(key); return v !== null ? JSON.parse(v) : fallback; } catch { return fallback; }
+}
+function save(key, val) {
+  try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
+}
 
 export default function App() {
   const [tab, setTab] = useState("Overview");
-  const [paid1, setPaid1] = useState({});
-  const [paid2, setPaid2] = useState({});
+  const [paid1, setPaid1] = useState(() => load("paid1", {}));
+  const [paid2, setPaid2] = useState(() => load("paid2", {}));
+  const [otPaid, setOtPaid] = useState(() => load("otPaid", { ot1: false, ot2: false, ot3: false }));
+  const [carPaid, setCarPaid] = useState(() => load("carPaid", {}));
   const [editing, setEditing] = useState(null);
   const [editVal, setEditVal] = useState("");
-  const [otPaid, setOtPaid] = useState({ ot1: false, ot2: false, ot3: false });
-  const [carPaid, setCarPaid] = useState({});
+  const [extraInput, setExtraInput] = useState("");
+  const [allocResult, setAllocResult] = useState(null);
+
+  useEffect(() => save("paid1", paid1), [paid1]);
+  useEffect(() => save("paid2", paid2), [paid2]);
+  useEffect(() => save("otPaid", otPaid), [otPaid]);
+  useEffect(() => save("carPaid", carPaid), [carPaid]);
 
   const rows = recompute(paid1, paid2);
   const card2ClearIdx = rows.findIndex(r => r.card2Bal === 0);
@@ -88,6 +138,11 @@ export default function App() {
   const lastCarPaidIdx = Math.max(-1, ...Object.keys(carPaid).map(Number));
   const carCurrentBal = lastCarPaidIdx >= 0 ? (carPaid[lastCarPaidIdx]?.bal ?? CAR_PLAN[lastCarPaidIdx].balance) : 24249;
   const carPct = Math.min(100, ((24249 - carCurrentBal) / 24249) * 100);
+  const totalPaid1 = rows.reduce((s, r) => s + r.card1Pay, 0);
+  const totalPaid2 = rows.reduce((s, r) => s + r.card2Pay, 0);
+  const totalDebt = rows[rows.length-1].card1Bal + rows[rows.length-1].card2Bal + carCurrentBal + otRemaining;
+  const totalOriginal = 3636 + 2600 + 24249 + 731;
+  const totalPct = Math.min(100, ((totalOriginal - totalDebt) / totalOriginal) * 100);
 
   function handleEdit(cardNum, idx) {
     const val = cardNum === 1 ? (paid1[idx] ?? initialPlan[idx].card1Pay) : (paid2[idx] ?? initialPlan[idx].card2Pay);
@@ -103,11 +158,12 @@ export default function App() {
     setEditing(null);
   }
 
-  const totalPaid1 = rows.reduce((s, r) => s + r.card1Pay, 0);
-  const totalPaid2 = rows.reduce((s, r) => s + r.card2Pay, 0);
-  const totalDebt = rows[rows.length-1].card1Bal + rows[rows.length-1].card2Bal + carCurrentBal + otRemaining;
-  const totalOriginal = 3636 + 2600 + 24249 + 731;
-  const totalPct = Math.min(100, ((totalOriginal - totalDebt) / totalOriginal) * 100);
+  function handleAllocate() {
+    const amt = parseFloat(extraInput);
+    if (!amt || amt <= 0) return;
+    const result = allocateExtra(amt, otPaid, rows[rows.length-1].card2Bal, rows[rows.length-1].card1Bal, carCurrentBal);
+    setAllocResult({ total: amt, items: result });
+  }
 
   return (
     <div style={{ minHeight:"100vh", background:"#0d0d0d", fontFamily:"'DM Mono','Courier New',monospace", color:"#e8e0d0", padding:"28px 18px" }}>
@@ -138,6 +194,11 @@ export default function App() {
         .tab-btn.active { background:#1e1e1e; border-color:#444; color:#e8e0d0; }
         .tab-btn:hover { color:#e8e0d0; }
         .overview-card { background:#141414; border:1px solid #222; border-radius:8px; padding:14px 16px; margin-bottom:10px; }
+        .money-input { background:#141414; border:1px solid #333; color:#e8e0d0; font-family:inherit; font-size:18px; padding:12px 14px; border-radius:6px; width:100%; outline:none; margin-bottom:10px; }
+        .money-input:focus { border-color:#ff9f43; }
+        .alloc-btn { background:#ff9f43; border:none; color:#0d0d0d; font-family:inherit; font-size:12px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; padding:12px; border-radius:6px; width:100%; cursor:pointer; transition:opacity 0.2s; }
+        .alloc-btn:hover { opacity:0.85; }
+        .alloc-item { background:#141414; border:1px solid #222; border-radius:6px; padding:12px 14px; margin-bottom:8px; }
       `}</style>
 
       <div style={{ marginBottom:24 }}>
@@ -151,6 +212,7 @@ export default function App() {
         {TABS.map(t => <button key={t} className={`tab-btn${tab===t?" active":""}`} onClick={()=>setTab(t)}>{t}</button>)}
       </div>
 
+      {/* OVERVIEW */}
       {tab === "Overview" && (
         <div>
           <div className="section-label">Total Debt Remaining</div>
@@ -184,11 +246,11 @@ export default function App() {
           <div style={{ marginTop:20, background:"#141414", border:"1px solid #1e1e1e", borderRadius:8, padding:"14px 16px" }}>
             <div className="section-label" style={{ marginBottom:10 }}>Attack Timeline</div>
             {[
-              { period:"Now", action:"Pay off $731 in 28% APR cards immediately", color:"#ff4444" },
+              { period:"Now",          action:"Pay off $731 in 28% APR cards immediately",                  color:"#ff4444" },
               { period:"Jun–Dec 2026", action:"$924/mo toward 0% cards — clear both before promos expire", color:"#4dff9a" },
-              { period:"Dec/Jan 2027", action:"Consider refinancing car if rate drops below 6%", color:"#7ab8ff" },
-              { period:"Jan 2027+", action:"Roll $924 freed-up cash → $1,411/mo attack on car loan", color:"#ff9f43" },
-              { period:"~Sept 2028", action:"Car paid off — completely debt free", color:"#fff" },
+              { period:"Dec/Jan 2027", action:"Consider refinancing car if rate drops below 6%",           color:"#7ab8ff" },
+              { period:"Jan 2027+",    action:"Roll $924 freed-up cash → $1,411/mo attack on car loan",   color:"#ff9f43" },
+              { period:"~Sept 2028",   action:"Car paid off — completely debt free",                       color:"#fff"    },
             ].map(s => (
               <div key={s.period} style={{ display:"flex", gap:12, marginBottom:10, alignItems:"flex-start" }}>
                 <div style={{ fontSize:10, color:s.color, whiteSpace:"nowrap", minWidth:90, paddingTop:1 }}>{s.period}</div>
@@ -199,6 +261,7 @@ export default function App() {
         </div>
       )}
 
+      {/* HIGH APR */}
       {tab === "High-APR Payoff" && (
         <div>
           <div className="section-label">
@@ -219,15 +282,17 @@ export default function App() {
               </div>
             </div>
           ))}
+          <div style={{ fontSize:10, color:"#444", marginTop:8 }}>Paying these off stops 28% interest immediately — highest ROI move you can make.</div>
         </div>
       )}
 
+      {/* 0% CARDS — fixed column order */}
       {tab === "0% Cards" && (
         <div>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:24 }}>
             {[
-              { label:"Card 1", deadline:"Feb 2027", bal:rows[rows.length-1].card1Bal, orig:3636, pct:bar1, color:"#ff9f43" },
-              { label:"Card 2", deadline:"Nov 2026", bal:rows[rows.length-1].card2Bal, orig:2600, pct:bar2, color:"#4dff9a" },
+              { label:"Card 1", deadline:"Feb 2027", bal:rows[rows.length-1].card1Bal, pct:bar1, color:"#ff9f43" },
+              { label:"Card 2", deadline:"Nov 2026", bal:rows[rows.length-1].card2Bal, pct:bar2, color:"#4dff9a" },
             ].map(c => (
               <div key={c.label} style={{ background:"#141414", border:"1px solid #222", borderRadius:8, padding:"14px 16px" }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
@@ -241,11 +306,12 @@ export default function App() {
               </div>
             ))}
           </div>
+
           <div style={{ overflowX:"auto" }}>
             <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
               <thead>
                 <tr style={{ borderBottom:"1px solid #2a2a2a" }}>
-                  {["Month","Card 2 Pay","Card 2 Bal","Card 1 Pay","Card 1 Bal","Total Out"].map(h => (
+                  {["Month","Card 1 Pay","Card 1 Bal","Card 2 Pay","Card 2 Bal","Total Out"].map(h => (
                     <th key={h} style={{ padding:"8px 10px", textAlign:"right", color:"#555", fontWeight:400, fontSize:10, letterSpacing:"0.1em", textTransform:"uppercase", whiteSpace:"nowrap" }}>
                       {h==="Month"?<span style={{ textAlign:"left", display:"block" }}>{h}</span>:h}
                     </th>
@@ -261,16 +327,10 @@ export default function App() {
                     <tr key={r.month} className={cleared?"cleared-row":""}>
                       <td style={{ padding:"9px 10px", color:"#888", borderBottom:"1px solid #181818" }}>
                         {r.month}
-                        {i===card2ClearIdx&&r.card2Bal===0&&<span className="tag done" style={{ marginLeft:6, fontSize:9 }}>C2 ✓</span>}
                         {i===card1ClearIdx&&r.card1Bal===0&&<span className="tag done" style={{ marginLeft:6, fontSize:9 }}>C1 ✓</span>}
+                        {i===card2ClearIdx&&r.card2Bal===0&&<span className="tag done" style={{ marginLeft:6, fontSize:9 }}>C2 ✓</span>}
                       </td>
-                      <td style={{ padding:"9px 10px", textAlign:"right", borderBottom:"1px solid #181818", color:"#4dff9a" }}>
-                        {e2?<input className="edit-input" value={editVal} autoFocus onChange={e=>setEditVal(e.target.value)} onBlur={commitEdit} onKeyDown={e=>e.key==="Enter"&&commitEdit()} />:
-                        <button className="cell-btn" style={{ color:r.card2Pay>0?"#4dff9a":"#333" }} onClick={()=>handleEdit(2,i)}>
-                          {r.card2Pay>0?`$${r.card2Pay.toLocaleString()}`:"—"}{s2>0&&r.card2Pay!==s2&&<span style={{ color:"#555", fontSize:10 }}> (rec ${s2})</span>}
-                        </button>}
-                      </td>
-                      <td style={{ padding:"9px 10px", textAlign:"right", borderBottom:"1px solid #181818", color:r.card2Bal===0?"#2a7a4b":"#888" }}>${r.card2Bal.toLocaleString()}</td>
+                      {/* Card 1 first */}
                       <td style={{ padding:"9px 10px", textAlign:"right", borderBottom:"1px solid #181818", color:"#ff9f43" }}>
                         {e1?<input className="edit-input" value={editVal} autoFocus onChange={e=>setEditVal(e.target.value)} onBlur={commitEdit} onKeyDown={e=>e.key==="Enter"&&commitEdit()} />:
                         <button className="cell-btn" style={{ color:r.card1Pay>0?"#ff9f43":"#333" }} onClick={()=>handleEdit(1,i)}>
@@ -278,6 +338,14 @@ export default function App() {
                         </button>}
                       </td>
                       <td style={{ padding:"9px 10px", textAlign:"right", borderBottom:"1px solid #181818", color:r.card1Bal===0?"#2a7a4b":"#888" }}>${r.card1Bal.toLocaleString()}</td>
+                      {/* Card 2 second */}
+                      <td style={{ padding:"9px 10px", textAlign:"right", borderBottom:"1px solid #181818", color:"#4dff9a" }}>
+                        {e2?<input className="edit-input" value={editVal} autoFocus onChange={e=>setEditVal(e.target.value)} onBlur={commitEdit} onKeyDown={e=>e.key==="Enter"&&commitEdit()} />:
+                        <button className="cell-btn" style={{ color:r.card2Pay>0?"#4dff9a":"#333" }} onClick={()=>handleEdit(2,i)}>
+                          {r.card2Pay>0?`$${r.card2Pay.toLocaleString()}`:"—"}{s2>0&&r.card2Pay!==s2&&<span style={{ color:"#555", fontSize:10 }}> (rec ${s2})</span>}
+                        </button>}
+                      </td>
+                      <td style={{ padding:"9px 10px", textAlign:"right", borderBottom:"1px solid #181818", color:r.card2Bal===0?"#2a7a4b":"#888" }}>${r.card2Bal.toLocaleString()}</td>
                       <td style={{ padding:"9px 10px", textAlign:"right", borderBottom:"1px solid #181818", color:"#e8e0d0", fontWeight:500 }}>
                         {(r.card1Pay+r.card2Pay)>0?`$${(r.card1Pay+r.card2Pay).toLocaleString()}`:"—"}
                       </td>
@@ -288,9 +356,9 @@ export default function App() {
               <tfoot>
                 <tr style={{ borderTop:"1px solid #2a2a2a" }}>
                   <td style={{ padding:10, color:"#555", fontSize:11 }}>TOTAL</td>
-                  <td style={{ padding:10, textAlign:"right", color:"#4dff9a", fontWeight:500 }}>${totalPaid2.toLocaleString()}</td>
-                  <td />
                   <td style={{ padding:10, textAlign:"right", color:"#ff9f43", fontWeight:500 }}>${totalPaid1.toLocaleString()}</td>
+                  <td />
+                  <td style={{ padding:10, textAlign:"right", color:"#4dff9a", fontWeight:500 }}>${totalPaid2.toLocaleString()}</td>
                   <td />
                   <td style={{ padding:10, textAlign:"right", color:"#e8e0d0", fontWeight:700 }}>${(totalPaid1+totalPaid2).toLocaleString()}</td>
                 </tr>
@@ -300,14 +368,15 @@ export default function App() {
         </div>
       )}
 
+      {/* CAR LOAN */}
       {tab === "Car Loan" && (
         <div>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
             {[
-              { label:"Remaining", value:`$${carCurrentBal.toLocaleString()}`, color:"#7ab8ff" },
-              { label:"APR", value:"7.59%", color:"#e8e0d0" },
-              { label:"Now → Dec 2026", value:"$487/mo", color:"#555" },
-              { label:"Jan 2027+", value:"$1,411/mo", color:"#ff9f43" },
+              { label:"Remaining",      value:`$${carCurrentBal.toLocaleString()}`, color:"#7ab8ff" },
+              { label:"APR",            value:"7.59%",                              color:"#e8e0d0" },
+              { label:"Now → Dec 2026", value:"$487/mo",                            color:"#555"    },
+              { label:"Jan 2027+",      value:"$1,411/mo",                          color:"#ff9f43" },
             ].map(s => (
               <div key={s.label} style={{ background:"#141414", border:"1px solid #222", borderRadius:6, padding:"12px 14px" }}>
                 <div style={{ fontSize:10, color:"#555", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.1em" }}>{s.label}</div>
@@ -359,12 +428,57 @@ export default function App() {
         </div>
       )}
 
+      {/* EXTRA CASH ALLOCATOR */}
+      {tab === "Extra Cash" && (
+        <div>
+          <div className="section-label">💰 Smart Money Allocator</div>
+          <div style={{ background:"#141414", border:"1px solid #222", borderRadius:8, padding:"16px", marginBottom:20, fontSize:11, color:"#888", lineHeight:1.7 }}>
+            Enter any extra money you have available and we'll automatically split it across your debts in the smartest order — highest urgency first.
+          </div>
+
+          <div style={{ marginBottom:20 }}>
+            <div style={{ fontSize:10, color:"#555", letterSpacing:"0.15em", textTransform:"uppercase", marginBottom:8 }}>Extra Amount Available</div>
+            <input
+              className="money-input"
+              type="number"
+              placeholder="$0.00"
+              value={extraInput}
+              onChange={e => { setExtraInput(e.target.value); setAllocResult(null); }}
+            />
+            <button className="alloc-btn" onClick={handleAllocate}>Allocate →</button>
+          </div>
+
+          {allocResult && (
+            <div>
+              <div className="section-label">Recommended Allocation — ${allocResult.total.toLocaleString()}</div>
+              {allocResult.items.length === 0 ? (
+                <div style={{ fontSize:12, color:"#4dff9a", padding:"12px 0" }}>🎉 All debts are paid off!</div>
+              ) : (
+                allocResult.items.map((item, i) => (
+                  <div key={i} className="alloc-item">
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
+                      <span style={{ fontFamily:"'Syne',sans-serif", fontWeight:700, fontSize:13 }}>{item.label}</span>
+                      <span style={{ fontSize:18, fontWeight:500, color:"#ff9f43" }}>${item.amount.toLocaleString()}</span>
+                    </div>
+                    <div style={{ fontSize:10, color:"#555" }}>{item.reason}</div>
+                  </div>
+                ))
+              )}
+              <div style={{ marginTop:12, fontSize:10, color:"#444", lineHeight:1.7 }}>
+                Priority order: 28% APR cards → Card 2 (Nov deadline) → Card 1 (Feb deadline) → Car loan
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       <div style={{ marginTop:28, fontSize:10, color:"#333", lineHeight:1.8 }}>
-        <span style={{ color:"#ff4444" }}>▸</span> High-APR: tap "Mark Paid" when done this week.<br />
-        <span style={{ color:"#ff9f43" }}>▸</span> 0% Cards: tap any payment cell to log actual payments.<br />
-        <span style={{ color:"#7ab8ff" }}>▸</span> Car: attack mode auto-starts Jan 2027 at $1,411/mo.<br />
+        <span style={{ color:"#ff4444" }}>▸</span> All data saves automatically to this device.<br />
+        <span style={{ color:"#ff9f43" }}>▸</span> Tap any payment cell to log actual payments.<br />
+        <span style={{ color:"#4dff9a" }}>▸</span> Use Extra Cash tab anytime you have money to allocate.<br />
         <span style={{ color:"#555" }}>▸</span> Assumes $0 new charges on all cards.
       </div>
     </div>
   );
 }
+ENDOFFILE
