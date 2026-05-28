@@ -156,51 +156,62 @@ export default function App() {
   const interestSaved = Math.max(0, origTotalInterest - projTotalInterest);
   const carPayoffMonth = projPlan[projPlan.length - 1]?.month ?? "N/A";
 
-  // Daily interest ticker — persistent across sessions
-  const dailyRate = currentCarBal * (7.59 / 100 / 365);
+  // Daily interest ticker — counts from loan start date 5/16/2026
+  const LOAN_START = new Date("2026-05-16T00:00:00").getTime();
+  const CAR_APR_DAILY = 7.59 / 100 / 365;
+  const dailyRate = currentCarBal * CAR_APR_DAILY;
   const secondRate = dailyRate / 86400;
 
-  function getTickerSeed(rate) {
+  // Total interest accrued since loan start (simplified: days * daily rate on original balance)
+  const daysSinceLoanStart = (Date.now() - LOAN_START) / 86400000;
+  const totalInterestAccrued = CAR_ORIGINAL * CAR_APR_DAILY * daysSinceLoanStart;
+
+  // Total interest actually paid from logged payments
+  const totalInterestPaid = (() => {
+    let bal = CAR_ORIGINAL;
+    let paid = 0;
+    basePlan.forEach((r, i) => {
+      const interest = bal * CAR_APR;
+      if (carPayments[i] !== undefined) {
+        paid += interest;
+        const principal = Math.min(bal, Math.max(0, carPayments[i] - interest));
+        bal = Math.max(0, bal - principal);
+      }
+    });
+    return paid;
+  })();
+
+  function getTickerSeed() {
     try {
       const lastTs = localStorage.getItem("tickerTimestamp");
       const lastVal = parseFloat(localStorage.getItem("tickerValue") || "0");
       const lastBal = parseFloat(localStorage.getItem("tickerBal") || "0");
-      // If balance changed reset
-      if (Math.abs(lastBal - currentCarBal) > 1) return 0;
-      if (!lastTs) return 0;
+      // If balance changed or no saved value, seed from total accrued since loan start
+      if (Math.abs(lastBal - currentCarBal) > 1 || !lastTs) {
+        return totalInterestAccrued;
+      }
       const elapsed = (Date.now() - parseInt(lastTs)) / 1000;
-      const accrued = lastVal + elapsed * rate;
-      return accrued >= dailyRate ? 0 : accrued;
-    } catch { return 0; }
+      return lastVal + elapsed * secondRate;
+    } catch { return totalInterestAccrued; }
   }
 
-  const [dailyInterest, setDailyInterest] = useState(() => getTickerSeed(secondRate));
+  const [dailyInterest, setDailyInterest] = useState(() => getTickerSeed());
 
   useEffect(() => {
-    // Save ticker state every second so it persists on close
     const saveInterval = setInterval(() => {
       try {
         localStorage.setItem("tickerTimestamp", Date.now().toString());
         localStorage.setItem("tickerBal", String(currentCarBal));
-        setDailyInterest(d => {
-          localStorage.setItem("tickerValue", String(d));
-          return d;
-        });
+        setDailyInterest(d => { localStorage.setItem("tickerValue", String(d)); return d; });
       } catch {}
     }, 1000);
 
     if (tickerRef.current) clearInterval(tickerRef.current);
     tickerRef.current = setInterval(() => {
-      setDailyInterest(d => {
-        const next = d + secondRate * 0.05;
-        return next >= dailyRate ? dailyRate : next;
-      });
+      setDailyInterest(d => d + secondRate * 0.05);
     }, 50);
 
-    return () => {
-      clearInterval(tickerRef.current);
-      clearInterval(saveInterval);
-    };
+    return () => { clearInterval(tickerRef.current); clearInterval(saveInterval); };
   }, [currentCarBal]);
 
   // Required monthly payments
@@ -410,19 +421,33 @@ export default function App() {
       {/* CAR LOAN */}
       {tab === "Car Loan" && (
         <div>
-          {/* Daily interest ticker */}
-          <div style={{ background:"#1a0a0a", border:"1px solid #3a1a1a", borderRadius:8, padding:"16px", marginBottom:20, textAlign:"center" }}>
-            <div style={{ fontSize:10, color:"#666", letterSpacing:"0.2em", textTransform:"uppercase", marginBottom:6 }}>Interest Accruing Today</div>
-            <div className="ticker">${dailyInterest.toFixed(6)}</div>
-            <div style={{ fontSize:10, color:"#555", marginTop:4 }}>${dailyRate.toFixed(2)} per day at current balance</div>
+          {/* Live ticker */}
+          <div style={{ background:"#1a0a0a", border:"1px solid #3a1a1a", borderRadius:8, padding:"16px", marginBottom:12, textAlign:"center" }}>
+            <div style={{ fontSize:10, color:"#666", letterSpacing:"0.2em", textTransform:"uppercase", marginBottom:6 }}>Total Interest Accrued Since 5/16/2026</div>
+            <div className="ticker">${dailyInterest.toFixed(4)}</div>
+            <div style={{ fontSize:10, color:"#555", marginTop:4 }}>+${dailyRate.toFixed(4)} per day · live</div>
+          </div>
+
+          {/* Interest stats row */}
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:16 }}>
+            {[
+              { label:"Total Interest Accrued", value:`$${totalInterestAccrued.toFixed(2)}`, color:"#ff4444" },
+              { label:"Total Interest Paid",    value:`$${totalInterestPaid.toFixed(2)}`,    color:"#ff9f43" },
+              { label:"Current APR Rate",       value:"7.59%",                               color:"#7ab8ff" },
+            ].map(s => (
+              <div key={s.label} style={{ background:"#141414", border:"1px solid #222", borderRadius:6, padding:"10px 12px", textAlign:"center" }}>
+                <div style={{ fontSize:9, color:"#555", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.08em", lineHeight:1.4 }}>{s.label}</div>
+                <div style={{ fontSize:14, fontWeight:500, color:s.color }}>{s.value}</div>
+              </div>
+            ))}
           </div>
 
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
             {[
-              { label:"Remaining",    value:`$${currentCarBal.toLocaleString()}`, color:"#7ab8ff" },
+              { label:"Remaining",      value:`$${currentCarBal.toLocaleString()}`, color:"#7ab8ff" },
               { label:"Interest Saved", value:`$${Math.round(interestSaved).toLocaleString()}`, color:"#4dff9a" },
-              { label:"Now → Dec 2026", value:"$487/mo",  color:"#555"    },
-              { label:"Jan 2027+",    value:"$1,411/mo", color:"#ff9f43" },
+              { label:"Daily Rate",     value:`$${dailyRate.toFixed(2)}/day`,       color:"#ff4444" },
+              { label:"Jan 2027+",      value:"$1,411/mo",                          color:"#ff9f43" },
             ].map(s => (
               <div key={s.label} style={{ background:"#141414", border:"1px solid #222", borderRadius:6, padding:"12px 14px" }}>
                 <div style={{ fontSize:10, color:"#555", marginBottom:4, textTransform:"uppercase", letterSpacing:"0.1em" }}>{s.label}</div>
