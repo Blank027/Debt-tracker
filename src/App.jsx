@@ -386,17 +386,39 @@ export default function App() {
                   {c.bal===0?<span className="tag done">✓ Paid</span>:c.deadline==="Nov 2026"?<span className="tag urgent">⚠ Urgent</span>:<span className="tag safe">On Track</span>}
                 </div>
                 <div style={{ fontSize:11, color:"#555", marginBottom:2 }}>Deadline: {c.deadline}</div>
-                {editingCardBal === c.id ? (
-                  <div style={{ display:"flex", gap:6, marginTop:6 }}>
+                {(editingCardBal === c.id+"_pay" || editingCardBal === c.id+"_set") ? (
+                  <div style={{ marginTop:6 }}>
+                    <div style={{ fontSize:10, color:"#555", marginBottom:4 }}>
+                      {editingCardBal === c.id+"_pay" ? "Amount paid:" : "Set new balance:"}
+                    </div>
                     <input className="cell-edit" style={{ width:"100%", fontSize:14 }} value={cardBalInput} autoFocus
+                      placeholder="0"
                       onChange={e=>setCardBalInput(e.target.value)}
-                      onBlur={()=>{ const n=parseFloat(cardBalInput); if(!isNaN(n)&&n>=0) c.setFn(Math.round(n)); setEditingCardBal(null); }}
-                      onKeyDown={e=>{ if(e.key==="Enter"){ const n=parseFloat(cardBalInput); if(!isNaN(n)&&n>=0) c.setFn(Math.round(n)); setEditingCardBal(null); }}} />
+                      onBlur={()=>{
+                        const n=parseFloat(cardBalInput);
+                        if(!isNaN(n)&&n>=0) {
+                          if(editingCardBal === c.id+"_pay") c.setFn(prev => Math.max(0, Math.round(prev - n)));
+                          else c.setFn(Math.round(n));
+                        }
+                        setEditingCardBal(null);
+                      }}
+                      onKeyDown={e=>{ if(e.key==="Enter"){
+                        const n=parseFloat(cardBalInput);
+                        if(!isNaN(n)&&n>=0) {
+                          if(editingCardBal === c.id+"_pay") c.setFn(prev => Math.max(0, Math.round(prev - n)));
+                          else c.setFn(Math.round(n));
+                        }
+                        setEditingCardBal(null);
+                      }}} />
+                    <div style={{ fontSize:10, color:"#555", marginTop:4 }}>Press Enter or tap away to confirm</div>
                   </div>
                 ) : (
                   <>
                     <div style={{ fontSize:20, fontWeight:500, color:c.color }}>${c.bal.toLocaleString()}</div>
-                    <button className="card-bal-btn" onClick={()=>{ setEditingCardBal(c.id); setCardBalInput(String(c.bal)); }}>✏ Edit Balance</button>
+                    <div style={{ display:"flex", gap:6, marginTop:4 }}>
+                      <button className="card-bal-btn" onClick={()=>{ setEditingCardBal(c.id+"_pay"); setCardBalInput(""); }}>+ Log Payment</button>
+                      <button className="card-bal-btn" style={{ color:"#888", borderColor:"#2a2a2a" }} onClick={()=>{ setEditingCardBal(c.id+"_set"); setCardBalInput(String(c.bal)); }}>✏ Set Balance</button>
+                    </div>
                   </>
                 )}
                 <div className="progress-bar"><div className="progress-fill" style={{ width:`${c.pct}%`, background:c.color }} /></div>
